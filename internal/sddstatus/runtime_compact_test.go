@@ -175,6 +175,63 @@ func TestCompactAcquireForeignTokenStaysBlockedWithoutMutation(t *testing.T) {
 	}
 }
 
+func TestCompactSettleClassTerminalDoesNotBlockAnotherClass(t *testing.T) {
+	for _, outcome := range []AttemptOutcome{AttemptFailed, AttemptPassed} {
+		t.Run(string(outcome), func(t *testing.T) {
+			repo := initRuntimeLedgerRepo(t)
+			store := mustRuntimeStore(t, repo, "cross-class-"+string(outcome))
+			environment, err := store.Acquire(context.Background(), CompactAcquireRequest{BeginAttemptRequest: BeginAttemptRequest{
+				RequestID: "environment-acquire", WorkUnit: "runtime", EvidenceGoal: "class routing", MaxAttempts: 1, MaxChangedLines: 20, Class: AttemptClassEnvironment,
+			}})
+			if err != nil || environment.State != CompactStateProceed {
+				t.Fatalf("environment acquire = %#v, %v", environment, err)
+			}
+			settled, err := store.Settle(context.Background(), CompactSettleRequest{
+				Token: environment.Token, RequestID: "environment-settle", Outcome: outcome, EvidenceRevision: runtimeTestHash('a'),
+				Diagnosis: "environment result", HarnessDisposition: HarnessReused, CleanupEvidence: "cleanup complete", ProcessEvidence: "no descendants",
+			})
+			if err != nil || (settled.State != CompactStateBlocked && settled.State != CompactStateComplete) {
+				t.Fatalf("environment settle = %#v, %v", settled, err)
+			}
+			acceptance, err := store.Acquire(context.Background(), CompactAcquireRequest{BeginAttemptRequest: BeginAttemptRequest{
+				RequestID: "acceptance-acquire", WorkUnit: "runtime", EvidenceGoal: "class routing", MaxAttempts: 1, MaxChangedLines: 20, Class: AttemptClassAcceptance,
+			}})
+			if err != nil || acceptance.State != CompactStateProceed {
+				t.Fatalf("acceptance after %s environment = %#v, %v", outcome, acceptance, err)
+			}
+		})
+	}
+}
+
+func TestCompactSettlePublicationRecoveryPreservesClass(t *testing.T) {
+	for _, class := range []AttemptClass{AttemptClassEnvironment, AttemptClassHarness} {
+		t.Run(string(class), func(t *testing.T) {
+			repo := initRuntimeLedgerRepo(t)
+			store := mustRuntimeStore(t, repo, "recovery-"+string(class))
+			acquired, err := store.Acquire(context.Background(), CompactAcquireRequest{BeginAttemptRequest: BeginAttemptRequest{
+				RequestID: "class-acquire", WorkUnit: "runtime", EvidenceGoal: "publication recovery", MaxAttempts: 1, MaxChangedLines: 20, Class: class,
+			}})
+			if err != nil || acquired.State != CompactStateProceed {
+				t.Fatalf("acquire = %#v, %v", acquired, err)
+			}
+			failNextCompactStoreSync(t, store)
+			settled, err := store.Settle(context.Background(), CompactSettleRequest{
+				Token: acquired.Token, RequestID: "class-settle", Outcome: AttemptFailed, EvidenceRevision: runtimeTestHash('a'),
+				Diagnosis: "publication recovery", HarnessDisposition: HarnessReused, CleanupEvidence: "cleanup complete", ProcessEvidence: "no descendants",
+			})
+			if err != nil || settled.State != CompactStateBlocked || settled.Reason != CompactBlockMaintainerDecision {
+				t.Fatalf("settle recovery = %#v, %v", settled, err)
+			}
+			acceptance, err := store.Acquire(context.Background(), CompactAcquireRequest{BeginAttemptRequest: BeginAttemptRequest{
+				RequestID: "acceptance-acquire", WorkUnit: "runtime", EvidenceGoal: "publication recovery", MaxAttempts: 1, MaxChangedLines: 20, Class: AttemptClassAcceptance,
+			}})
+			if err != nil || acceptance.State != CompactStateProceed {
+				t.Fatalf("acceptance after recovered %s = %#v, %v", class, acceptance, err)
+			}
+		})
+	}
+}
+
 func TestCompactSettlePreservesAtomicRemediationAndReplay(t *testing.T) {
 	legacyFixture := newRuntimeUnchangedBindingFixture(t, "compact-legacy-evidence")
 	write(t, filepath.Join(legacyFixture.store.Repo, "openspec", "changes", "compact-legacy-evidence", "tasks.md"), "- [x] 1.1 Done\n# candidate-changing remediation\n")

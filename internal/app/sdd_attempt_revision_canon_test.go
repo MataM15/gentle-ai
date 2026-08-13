@@ -63,7 +63,7 @@ func canonAcquireToken(t *testing.T, repo, requestID string) string {
 	canonRunJSON(t, &result, "sdd-attempt", "acquire", "--cwd", repo, "--change", canonSDDChange,
 		"--request-id", requestID, "--work-unit", "canon-unit",
 		"--evidence-goal", "prove canonical revision input",
-		"--max-attempts", "4", "--max-changed-lines", "20")
+		"--max-attempts", "4", "--max-changed-lines", "20", "--attempt-class", "acceptance")
 	if result.State != "proceed" || result.Token == "" {
 		t.Fatalf("acquire = %+v, want proceed with a token", result)
 	}

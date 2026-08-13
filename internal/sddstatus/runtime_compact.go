@@ -152,8 +152,10 @@ func runtimeReadiness(in runtimeReadinessInput) (CompactAttemptResult, bool) {
 		return compactForeignAcquireToken(activeToken), true
 	}
 
+	class := runtimeAttemptClass(in.Request.Class)
+	terminal := in.Status.ClassTerminal[class]
 	switch {
-	case in.Status.Complete:
+	case class == AttemptClassLegacy && in.Status.Complete || terminal.Complete:
 		// Completion is scoped to one objective: a passed apply is terminal for
 		// its own work unit while remaining an ordinary predecessor for the
 		// distinct verification the SDD graph still owes. A caller that names no
@@ -163,7 +165,7 @@ func runtimeReadiness(in runtimeReadinessInput) (CompactAttemptResult, bool) {
 			return CompactAttemptResult{}, false
 		}
 		return CompactAttemptResult{State: CompactStateComplete}, true
-	case in.Status.DecisionRequired:
+	case class == AttemptClassLegacy && in.Status.DecisionRequired || terminal.DecisionRequired:
 		return compactBlocked(CompactBlockMaintainerDecision, ""), true
 	case in.Status.ActiveAttempt != nil:
 		return compactBlocked(CompactBlockActiveAttempt, activeToken), true
@@ -256,9 +258,9 @@ func (store RuntimeStore) Settle(ctx context.Context, request CompactSettleReque
 			return compactBlocked(CompactBlockInvalidContinuation, ""), nil
 		}
 		if _, err := store.Finish(ctx, finish); err != nil {
-			return store.compactMutationFailure(err, true, BeginAttemptRequest{}), nil
+			return store.compactMutationFailure(err, true, BeginAttemptRequest{Class: finish.Class}), nil
 		}
-		return store.compactSettleResult()
+		return store.compactSettleResult(runtimeAttemptClass(finish.Class))
 	}
 
 	// Settle asks the same predicate the same question and interprets the same
@@ -282,6 +284,10 @@ func (store RuntimeStore) Settle(ctx context.Context, request CompactSettleReque
 		HarnessDisposition: request.HarnessDisposition, CleanupEvidence: request.CleanupEvidence,
 		ProcessEvidence: request.ProcessEvidence,
 	}
+	class := status.Attempts[len(status.Attempts)-1].Class
+	if class != AttemptClassLegacy {
+		finish.Class = class
+	}
 	explicitSuccessor := request.SuccessorLineageID != ""
 	failedEvidence := status.EvidenceRevision
 	if failedEvidence == "" {
@@ -303,9 +309,9 @@ func (store RuntimeStore) Settle(ctx context.Context, request CompactSettleReque
 		return compactBlocked(CompactBlockInvalidContinuation, ""), nil
 	}
 	if _, err := store.Finish(ctx, finish); err != nil {
-		return store.compactMutationFailure(err, true, BeginAttemptRequest{}), nil
+		return store.compactMutationFailure(err, true, BeginAttemptRequest{Class: finish.Class}), nil
 	}
-	return store.compactSettleResult()
+	return store.compactSettleResult(class)
 }
 
 func (store RuntimeStore) HandoffCompact(ctx context.Context, request CompactHandoffRequest) (CompactAttemptResult, error) {
@@ -360,7 +366,7 @@ func compactAcquireMatches(record runtimeRecord, request BeginAttemptRequest) bo
 	event := record.Begin
 	return request == (BeginAttemptRequest{
 		ExpectedRevision: record.PreviousRevision, RequestID: record.RequestID, WorkUnit: event.WorkUnit,
-		EvidenceGoal: event.EvidenceGoal, MaxAttempts: event.MaxAttempts, MaxChangedLines: event.MaxChangedLines,
+		EvidenceGoal: event.EvidenceGoal, MaxAttempts: event.MaxAttempts, MaxChangedLines: event.MaxChangedLines, Class: event.Class,
 	})
 }
 
@@ -374,6 +380,9 @@ func compactSettleReplayRequest(replay runtimeReplay, record runtimeRecord, requ
 		EvidenceRevision: event.EvidenceRevision, Diagnosis: event.Diagnosis,
 		HarnessDisposition: event.HarnessDisposition, CleanupEvidence: event.CleanupEvidence,
 		ProcessEvidence: event.ProcessEvidence,
+	}
+	if event.Class != "" {
+		finish.Class = event.Class
 	}
 	if record.Operation == runtimeOperationFinishRemediation {
 		finish.ExpectedBindingRevision = record.Binding.ExpectedRevision
@@ -406,7 +415,7 @@ func compactAcquireResult(replay runtimeReplay, request BeginAttemptRequest, own
 	return compactBlocked(CompactBlockInvalidContinuation, "")
 }
 
-func (store RuntimeStore) compactSettleResult(expected ...string) (CompactAttemptResult, error) {
+func (store RuntimeStore) compactSettleResult(class AttemptClass, expected ...string) (CompactAttemptResult, error) {
 	replay, err := store.load()
 	if err != nil {
 		return compactBlocked(CompactBlockCorruptAuthority, ""), nil
@@ -416,6 +425,7 @@ func (store RuntimeStore) compactSettleResult(expected ...string) (CompactAttemp
 	}
 	if result, terminal := runtimeReadiness(runtimeReadinessInput{
 		Status: replay.Status, AttemptTokens: replay.AttemptTokens,
+		Request: BeginAttemptRequest{Class: class},
 	}); terminal {
 		return result, nil
 	}
@@ -426,7 +436,7 @@ func (store RuntimeStore) compactMutationFailure(err error, settle bool, begin B
 	var publication *RuntimePublicationError
 	if errors.As(err, &publication) && publication.Committed {
 		if settle {
-			result, _ := store.compactSettleResult(publication.Revision)
+			result, _ := store.compactSettleResult(runtimeAttemptClass(begin.Class), publication.Revision)
 			return result
 		}
 		replay, loadErr := store.load()

@@ -55,6 +55,7 @@ func runSDDAttempt(ctx context.Context, args []string, stdout io.Writer) error {
 	expectedBindingRevision := registerSDDAttemptStringFlag(flags, operation, "expected-binding-revision")
 	successorLineage := registerSDDAttemptStringFlag(flags, operation, "successor-lineage")
 	remediatesEvidenceRevision := registerSDDAttemptStringFlag(flags, operation, "remediates-evidence-revision")
+	attemptClass := registerSDDAttemptStringFlag(flags, operation, "attempt-class")
 	reason := registerSDDAttemptStringFlag(flags, operation, "reason")
 	actor := registerSDDAttemptStringFlag(flags, operation, "actor")
 	var roots sddAttemptRootList
@@ -152,7 +153,7 @@ func runSDDAttempt(ctx context.Context, args []string, stdout io.Writer) error {
 		result, err = store.Acquire(ctx, sddstatus.CompactAcquireRequest{
 			BeginAttemptRequest: sddstatus.BeginAttemptRequest{
 				RequestID: *requestID, WorkUnit: *workUnit, EvidenceGoal: *evidenceGoal,
-				MaxAttempts: *maxAttempts, MaxChangedLines: *maxChangedLines,
+				MaxAttempts: *maxAttempts, MaxChangedLines: *maxChangedLines, Class: sddstatus.AttemptClass(*attemptClass),
 			},
 			Token:                      *token,
 			RemediatesEvidenceRevision: *remediatesEvidenceRevision,
@@ -282,6 +283,7 @@ var sddAttemptOperationDefinitions = []sddAttemptOperationContract{
 		{name: "max-attempts", kind: sddAttemptIntFlag, usage: "optional; default 2, limit 1..100"},
 		{name: "max-changed-lines", kind: sddAttemptIntFlag, usage: "optional; default 200, limit 1..1000000"},
 		{name: "remediates-evidence-revision", usage: "optional; sha256:<64 lowercase hex> failed evidence for unmanaged remediation"},
+		{name: "attempt-class", required: true, usage: "required; environment, harness, or acceptance"},
 	}},
 	{name: "settle", purpose: "Complete the attempt selected by its token", flags: []sddAttemptFlagDefinition{
 		sddAttemptCWDFlag, sddAttemptChangeFlag,

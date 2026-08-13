@@ -33,7 +33,7 @@ func TestRunSDDAttemptCompactOutputStaysBoundedAcrossHistory(t *testing.T) {
 			"acquire", "--cwd", repo, "--change", change,
 			"--request-id", fmt.Sprintf("compact-acquire-%d", attempt),
 			"--work-unit", "runtime-proof", "--evidence-goal", "prove compact orchestration",
-			"--max-attempts", "12", "--max-changed-lines", "200",
+			"--max-attempts", "12", "--max-changed-lines", "200", "--attempt-class", "acceptance",
 		})
 		if acquired.State != "proceed" || acquired.Reason != "" || !strings.HasPrefix(acquired.Token, "sha256:") {
 			t.Fatalf("acquire %d = %#v", attempt, acquired)
@@ -317,7 +317,7 @@ func TestRunSDDAttemptAcquireTokenBreaksParentActorDeadlock(t *testing.T) {
 	actor, actorPayload := runCompactSDDAttempt(t, []string{
 		"acquire", "--cwd", repo, "--change", change, "--request-id", "deadlock-actor",
 		"--work-unit", "compact-unit", "--evidence-goal", "prove compact attempt",
-		"--max-attempts", "2", "--max-changed-lines", "20", "--token", parent.Token,
+		"--max-attempts", "2", "--max-changed-lines", "20", "--token", parent.Token, "--attempt-class", "acceptance",
 	})
 	after := snapshotRuntimeAuthorityFiles(t, store.Dir)
 
@@ -352,7 +352,7 @@ func TestRunSDDAttemptAcquireForeignTokenStaysBlockedWithNamedExit(t *testing.T)
 	blocked, blockedPayload := runCompactSDDAttempt(t, []string{
 		"acquire", "--cwd", repo, "--change", change, "--request-id", "foreign-contender",
 		"--work-unit", "compact-unit", "--evidence-goal", "prove compact attempt",
-		"--max-attempts", "2", "--max-changed-lines", "20", "--token", cliAttemptHash('f'),
+		"--max-attempts", "2", "--max-changed-lines", "20", "--token", cliAttemptHash('f'), "--attempt-class", "acceptance",
 	})
 	after := snapshotRuntimeAuthorityFiles(t, store.Dir)
 
@@ -372,7 +372,39 @@ func compactAcquireArgs(repo, change, requestID string, maxAttempts int) []strin
 	return []string{
 		"acquire", "--cwd", repo, "--change", change, "--request-id", requestID,
 		"--work-unit", "compact-unit", "--evidence-goal", "prove compact attempt",
-		"--max-attempts", fmt.Sprint(maxAttempts), "--max-changed-lines", "20",
+		"--max-attempts", fmt.Sprint(maxAttempts), "--max-changed-lines", "20", "--attempt-class", "acceptance",
+	}
+}
+
+func TestRunSDDAttemptCompactClassContract(t *testing.T) {
+	repo := initReviewCLIRepo(t)
+	const change = "compact-class"
+	missing := compactAcquireArgs(repo, change, "missing-class", 2)
+	missing = missing[:len(missing)-2]
+	var output bytes.Buffer
+	if err := RunSDDAttempt(missing, &output); err == nil || !strings.Contains(err.Error(), "--attempt-class") {
+		t.Fatalf("missing class error = %v", err)
+	}
+
+	first, _ := runCompactSDDAttempt(t, compactAcquireArgs(repo, change, "class-acquire", 2))
+	if first.State != "proceed" {
+		t.Fatalf("class acquire = %#v", first)
+	}
+	replayed, _ := runCompactSDDAttempt(t, compactAcquireArgs(repo, change, "class-acquire", 2))
+	if replayed != first {
+		t.Fatalf("class acquire replay = %#v, want %#v", replayed, first)
+	}
+	settled, _ := runCompactSDDAttempt(t, compactSettleArgs(repo, change, first.Token, "class-settle", "failed"))
+	if settled.State != "proceed" {
+		t.Fatalf("token-derived class settle = %#v", settled)
+	}
+
+	var status bytes.Buffer
+	if err := RunSDDAttempt([]string{"status", "--cwd", repo, "--change", change}, &status); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(status.String(), `"class_attempts": {`) || !strings.Contains(status.String(), `"acceptance": 1`) || !strings.Contains(status.String(), `"class_terminal": {`) {
+		t.Fatalf("status omitted class diagnostics:\n%s", status.String())
 	}
 }
 

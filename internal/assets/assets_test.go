@@ -1036,6 +1036,38 @@ func TestSDDOrchestratorAssetsDefaultToAutomatic(t *testing.T) {
 	}
 }
 
+func TestSDDOrchestratorAssetsClassifyRuntimeAttempts(t *testing.T) {
+	paths := append([]string(nil), sddOrchestratorAutomaticDefaultRuntimes...)
+	for _, path := range paths {
+		t.Run(path, func(t *testing.T) {
+			content := MustRead(path)
+			for _, required := range []string{
+				"--attempt-class <environment|harness|acceptance>",
+				"readiness outside the harness",
+				"harness/evidence readiness after environment passes",
+				"product/spec behavior after both pass",
+				"Project-specific checks remain repo-owned.",
+				"failures charge only that class, never acceptance by default",
+			} {
+				if !strings.Contains(content, required) {
+					t.Fatalf("%s missing runtime attempt classification wording %q", path, required)
+				}
+			}
+		})
+	}
+
+	contract := MustRead("skills/_shared/sdd-status-contract.md")
+	for _, required := range []string{
+		"--attempt-class environment|harness|acceptance",
+		"only product/spec behavior is acceptance",
+		"failures charge only their own class",
+	} {
+		if !strings.Contains(contract, required) {
+			t.Fatalf("shared status contract missing runtime attempt classification wording %q", required)
+		}
+	}
+}
+
 func TestSDDFFCommandsHonorInteractiveMode(t *testing.T) {
 	for _, path := range []string{
 		"opencode/commands/sdd-ff.md",

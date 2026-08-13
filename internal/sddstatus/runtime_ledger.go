@@ -186,6 +186,15 @@ const (
 	AttemptPassed      AttemptOutcome = "passed"
 )
 
+type AttemptClass string
+
+const (
+	AttemptClassEnvironment AttemptClass = "environment"
+	AttemptClassHarness     AttemptClass = "harness"
+	AttemptClassAcceptance  AttemptClass = "acceptance"
+	AttemptClassLegacy      AttemptClass = "legacy"
+)
+
 type HarnessDisposition string
 
 const (
@@ -205,12 +214,13 @@ type RuntimeObjective struct {
 }
 
 type RuntimeAttempt struct {
-	Ordinal                int    `json:"ordinal"`
-	ObjectiveID            string `json:"objective_id"`
-	ObjectiveGeneration    int    `json:"objective_generation"`
-	WorkUnit               string `json:"work_unit"`
-	BeginCandidateIdentity string `json:"begin_candidate_identity"`
-	BeginCandidateTree     string `json:"begin_candidate_tree"`
+	Ordinal                int          `json:"ordinal"`
+	ObjectiveID            string       `json:"objective_id"`
+	ObjectiveGeneration    int          `json:"objective_generation"`
+	WorkUnit               string       `json:"work_unit"`
+	Class                  AttemptClass `json:"class,omitempty"`
+	BeginCandidateIdentity string       `json:"begin_candidate_identity"`
+	BeginCandidateTree     string       `json:"begin_candidate_tree"`
 	// BeginWorktree is the canonical (absolute, symlink-evaluated) --cwd Begin
 	// ran under (#2296 part 1). It is empty for every chain recorded before
 	// this field existed — that emptiness IS the legacy signal, so replay and
@@ -293,25 +303,27 @@ type RuntimeRescope struct {
 }
 
 type RuntimeStatus struct {
-	Schema                 string            `json:"schema"`
-	Change                 string            `json:"change"`
-	Revision               string            `json:"revision"`
-	Objective              *RuntimeObjective `json:"objective,omitempty"`
-	ActiveAttempt          *RuntimeAttempt   `json:"active_attempt,omitempty"`
-	Attempts               []RuntimeAttempt  `json:"attempts"`
-	ObjectiveGeneration    int               `json:"objective_generation"`
-	NextOrdinal            int               `json:"next_ordinal"`
-	CumulativeAttempts     int               `json:"cumulative_attempts"`
-	CumulativeChangedLines int               `json:"cumulative_changed_lines"`
-	LifetimeAttempts       int               `json:"lifetime_attempts"`
-	LifetimeChangedLines   int               `json:"lifetime_changed_lines"`
-	EvidenceRevision       string            `json:"evidence_revision"`
-	DecisionRequired       bool              `json:"decision_required"`
-	Complete               bool              `json:"complete"`
-	NextAction             string            `json:"next_action"`
-	LastReset              *RuntimeReset     `json:"last_reset,omitempty"`
-	LastAdvance            *RuntimeAdvance   `json:"last_advance,omitempty"`
-	LastRescope            *RuntimeRescope   `json:"last_rescope,omitempty"`
+	Schema                 string                                `json:"schema"`
+	Change                 string                                `json:"change"`
+	Revision               string                                `json:"revision"`
+	Objective              *RuntimeObjective                     `json:"objective,omitempty"`
+	ActiveAttempt          *RuntimeAttempt                       `json:"active_attempt,omitempty"`
+	Attempts               []RuntimeAttempt                      `json:"attempts"`
+	ObjectiveGeneration    int                                   `json:"objective_generation"`
+	NextOrdinal            int                                   `json:"next_ordinal"`
+	CumulativeAttempts     int                                   `json:"cumulative_attempts"`
+	ClassAttempts          map[AttemptClass]int                  `json:"class_attempts,omitempty"`
+	ClassTerminal          map[AttemptClass]RuntimeClassTerminal `json:"class_terminal,omitempty"`
+	CumulativeChangedLines int                                   `json:"cumulative_changed_lines"`
+	LifetimeAttempts       int                                   `json:"lifetime_attempts"`
+	LifetimeChangedLines   int                                   `json:"lifetime_changed_lines"`
+	EvidenceRevision       string                                `json:"evidence_revision"`
+	DecisionRequired       bool                                  `json:"decision_required"`
+	Complete               bool                                  `json:"complete"`
+	NextAction             string                                `json:"next_action"`
+	LastReset              *RuntimeReset                         `json:"last_reset,omitempty"`
+	LastAdvance            *RuntimeAdvance                       `json:"last_advance,omitempty"`
+	LastRescope            *RuntimeRescope                       `json:"last_rescope,omitempty"`
 	// GrantedRoots is the per-change edit-authority projection (#2540 S2):
 	// canonical absolute symlink-evaluated roots accumulated from grant
 	// records in chain order. AllowedEditRoots consumption is a later slice.
@@ -326,13 +338,19 @@ type RuntimeStatus struct {
 	Receipt *reviewtransaction.SDDReceiptRef `json:"receipt,omitempty"`
 }
 
+type RuntimeClassTerminal struct {
+	Complete         bool `json:"complete"`
+	DecisionRequired bool `json:"decision_required"`
+}
+
 type BeginAttemptRequest struct {
-	ExpectedRevision string `json:"expected_revision"`
-	RequestID        string `json:"request_id"`
-	WorkUnit         string `json:"work_unit"`
-	EvidenceGoal     string `json:"evidence_goal"`
-	MaxAttempts      int    `json:"max_attempts"`
-	MaxChangedLines  int    `json:"max_changed_lines"`
+	ExpectedRevision string       `json:"expected_revision"`
+	RequestID        string       `json:"request_id"`
+	WorkUnit         string       `json:"work_unit"`
+	EvidenceGoal     string       `json:"evidence_goal"`
+	MaxAttempts      int          `json:"max_attempts"`
+	MaxChangedLines  int          `json:"max_changed_lines"`
+	Class            AttemptClass `json:"class,omitempty"`
 }
 
 type FinishAttemptRequest struct {
@@ -347,6 +365,7 @@ type FinishAttemptRequest struct {
 	ExpectedBindingRevision    string             `json:"expected_binding_revision,omitempty"`
 	SuccessorLineageID         string             `json:"successor_lineage_id,omitempty"`
 	RemediatesEvidenceRevision string             `json:"remediates_evidence_revision,omitempty"`
+	Class                      AttemptClass       `json:"class,omitempty"`
 }
 
 type HandoffAttemptRequest struct {
@@ -520,15 +539,16 @@ type runtimeAdvanceEvent struct {
 }
 
 type runtimeBeginEvent struct {
-	ObjectiveID            string `json:"objective_id"`
-	ObjectiveGeneration    int    `json:"objective_generation,omitempty"`
-	WorkUnit               string `json:"work_unit"`
-	EvidenceGoal           string `json:"evidence_goal"`
-	MaxAttempts            int    `json:"max_attempts"`
-	MaxChangedLines        int    `json:"max_changed_lines"`
-	Ordinal                int    `json:"ordinal"`
-	BeginCandidateIdentity string `json:"begin_candidate_identity"`
-	BeginCandidateTree     string `json:"begin_candidate_tree"`
+	ObjectiveID            string       `json:"objective_id"`
+	ObjectiveGeneration    int          `json:"objective_generation,omitempty"`
+	WorkUnit               string       `json:"work_unit"`
+	EvidenceGoal           string       `json:"evidence_goal"`
+	Class                  AttemptClass `json:"class,omitempty"`
+	MaxAttempts            int          `json:"max_attempts"`
+	MaxChangedLines        int          `json:"max_changed_lines"`
+	Ordinal                int          `json:"ordinal"`
+	BeginCandidateIdentity string       `json:"begin_candidate_identity"`
+	BeginCandidateTree     string       `json:"begin_candidate_tree"`
 	// BeginWorktree records store.Workspace at Begin time (#2296 part 1): the
 	// resolved, symlink-evaluated absolute path of the exact --cwd this begin
 	// ran under. omitempty is load-bearing — every record predating this field
@@ -584,6 +604,7 @@ type runtimeFinishEvent struct {
 	ProcessEvidence            string             `json:"process_evidence"`
 	RemediatesEvidenceRevision string             `json:"remediates_evidence_revision,omitempty"`
 	ChangedLineBudgetExceeded  bool               `json:"changed_line_budget_exceeded,omitempty"`
+	Class                      AttemptClass       `json:"class,omitempty"`
 }
 
 type runtimeBindingEvent struct {
@@ -714,14 +735,24 @@ func (store RuntimeStore) Begin(ctx context.Context, request BeginAttemptRequest
 		// request names a distinct work unit, the ordinary continuation is the
 		// successor objective, not a maintainer reset that would discard the
 		// completed apply authority along with its evidence.
+		class := runtimeAttemptClass(request.Class)
 		advancing := false
-		if status.Complete {
+		if class == AttemptClassLegacy && status.Complete {
 			if !runtimeObjectiveAdvanceAdmissible(status, request) {
 				return runtimeRecord{}, store.runtimeObjectiveCompleteRefusal(status)
 			}
 			advancing = true
 		}
-		if status.DecisionRequired {
+		// A non-legacy class's own terminal Complete is a distinct refusal
+		// from budget exhaustion: runtimeReadiness (the Acquire path) already
+		// short-circuits on ClassTerminal[class].Complete before ever calling
+		// Begin, so this mirrors that same check for the raw begin/finish
+		// diagnostic surface and its replay validator (#2540-classes
+		// follow-up: R4-002).
+		if class != AttemptClassLegacy && status.ClassTerminal[class].Complete {
+			return runtimeRecord{}, store.runtimeClassCompleteRefusal(status, class)
+		}
+		if class == AttemptClassLegacy && status.DecisionRequired || status.ClassTerminal[class].DecisionRequired {
 			return runtimeRecord{}, ErrRuntimeBudgetExhausted
 		}
 
@@ -780,12 +811,13 @@ func (store RuntimeStore) Begin(ctx context.Context, request BeginAttemptRequest
 		}
 		// The successor opens a fresh per-objective budget, so the charges the
 		// completed scope accrued cannot exhaust it before its first attempt.
-		if !advancing && (status.CumulativeAttempts >= request.MaxAttempts || status.CumulativeChangedLines >= request.MaxChangedLines) {
+		if !advancing && (status.ClassAttempts[class] >= request.MaxAttempts || status.CumulativeChangedLines >= request.MaxChangedLines) {
 			return runtimeRecord{}, ErrRuntimeBudgetExhausted
 		}
 		event := &runtimeBeginEvent{
 			ObjectiveID: objectiveID, ObjectiveGeneration: generation, WorkUnit: request.WorkUnit, EvidenceGoal: request.EvidenceGoal,
 			MaxAttempts: request.MaxAttempts, MaxChangedLines: request.MaxChangedLines,
+			Class:   request.Class,
 			Ordinal: status.NextOrdinal, BeginCandidateIdentity: snapshot.Identity, BeginCandidateTree: snapshot.CandidateTree,
 			BeginWorktree: store.Workspace, EffectiveWorktree: store.Workspace,
 		}
@@ -810,6 +842,10 @@ func (store RuntimeStore) Finish(ctx context.Context, request FinishAttemptReque
 		active := status.ActiveAttempt
 		if active == nil {
 			return runtimeRecord{}, ErrRuntimeNoActiveAttempt
+		}
+		if request.Class != active.Class && !(request.Class == "" && active.Class == AttemptClassLegacy) {
+			// refusal:by-design operator-knowledge: only the token-selected active attempt names its immutable class.
+			return runtimeRecord{}, errors.New("finish attempt class does not match the active attempt")
 		}
 		// Check the effective binding before candidate capture or line charging.
 		if active.EffectiveWorktree != "" && active.EffectiveWorktree != store.Workspace {
@@ -912,6 +948,7 @@ func (store RuntimeStore) Finish(ctx context.Context, request FinishAttemptReque
 			CleanupEvidence: request.CleanupEvidence, ProcessEvidence: request.ProcessEvidence,
 			RemediatesEvidenceRevision: request.RemediatesEvidenceRevision,
 			ChangedLineBudgetExceeded:  status.CumulativeChangedLines+changedLines > status.Objective.MaxChangedLines,
+			Class:                      request.Class,
 		}
 		if remediation {
 			prepared, prepareErr := prepareApprovedRuntimeSuccessorBinding(ctx, store.Repo, store.Workspace, store.Change, request.SuccessorLineageID)
@@ -1158,6 +1195,19 @@ func (store RuntimeStore) runtimeObjectiveCompleteRefusal(status RuntimeStatus) 
 	return fmt.Errorf(
 		"%w: it passed within budget, so this change continues through a SUCCESSOR objective, not a repeat of this one — re-run this begin with a different --work-unit (everything else may stay as it is) and it is admitted as an advance that carries this objective's evidence forward. To discard this scope instead of succeeding it, run `gentle-ai sdd-attempt reset --cwd %q --change %q --expected-revision %q --request-id \"<unique-request-id>\" --reason \"<why-the-objective-changed>\" --actor \"<actor>\"`",
 		ErrRuntimeObjectiveDone, store.Workspace, store.Change, status.Revision)
+}
+
+// runtimeClassCompleteRefusal mirrors runtimeObjectiveCompleteRefusal for a
+// single non-legacy attempt class: once ClassTerminal[class].Complete is
+// true, that class already passed within its own budget, so Begin must
+// refuse a same-class repeat exactly as it refuses reopening a passed legacy
+// objective (#2540-classes follow-up). The caller either begins a different,
+// not-yet-terminal class against this same objective, or resets the whole
+// objective to discard it.
+func (store RuntimeStore) runtimeClassCompleteRefusal(status RuntimeStatus, class AttemptClass) error {
+	return fmt.Errorf(
+		"%w: attempt class %q already passed within budget, so Begin cannot reopen it — begin a different, not-yet-terminal class against this objective, or discard the whole objective with `gentle-ai sdd-attempt reset --cwd %q --change %q --expected-revision %q --request-id \"<unique-request-id>\" --reason \"<why-the-objective-changed>\" --actor \"<actor>\"`",
+		ErrRuntimeObjectiveDone, class, store.Workspace, store.Change, status.Revision)
 }
 
 func (store RuntimeStore) runtimeWorktreeMismatchRefusal(ordinal int, beginWorktree string) error {
@@ -1819,6 +1869,8 @@ func applyRuntimeRecord(replay *runtimeReplay, revision string, record runtimeRe
 		}
 		replay.Status.Objective = nil
 		replay.Status.CumulativeAttempts = 0
+		replay.Status.ClassAttempts = nil
+		replay.Status.ClassTerminal = nil
 		replay.Status.CumulativeChangedLines = 0
 		replay.Status.EvidenceRevision = ""
 		replay.Status.DecisionRequired = false
@@ -1858,6 +1910,7 @@ func applyRuntimeRecord(replay *runtimeReplay, revision string, record runtimeRe
 
 func applyRuntimeBeginEvent(replay *runtimeReplay, revision string, record runtimeRecord) error {
 	event := record.Begin
+	class := runtimeAttemptClass(event.Class)
 	generation := event.ObjectiveGeneration
 	if generation == 0 {
 		generation = replay.Status.ObjectiveGeneration + 1
@@ -1865,8 +1918,17 @@ func applyRuntimeBeginEvent(replay *runtimeReplay, revision string, record runti
 			generation = replay.Status.Objective.Generation
 		}
 	}
-	if replay.Status.ActiveAttempt != nil || replay.Status.Complete || replay.Status.DecisionRequired {
+	if replay.Status.ActiveAttempt != nil || class == AttemptClassLegacy && (replay.Status.Complete || replay.Status.DecisionRequired) ||
+		replay.Status.ClassTerminal[class].DecisionRequired {
 		return errors.New("begin record is not a valid successor")
+	}
+	// Mirrors Begin's own runtimeClassCompleteRefusal guard (#2540-classes
+	// follow-up: R4-002), with the same typed sentinel: a begin record
+	// reopening an already-passed non-legacy class replays as invalid
+	// instead of silently accepted, whether it reached the chain through a
+	// pre-fix client or a tampered record.
+	if class != AttemptClassLegacy && replay.Status.ClassTerminal[class].Complete {
+		return fmt.Errorf("%w: replayed begin record reopens attempt class %q, which already passed within budget", ErrRuntimeObjectiveDone, class)
 	}
 	if replay.Status.Objective == nil {
 		expectedObjectiveID := runtimeObjectiveID(record.Change, event.WorkUnit, event.EvidenceGoal, event.BeginCandidateIdentity, generation)
@@ -1906,12 +1968,12 @@ func applyRuntimeBeginEvent(replay *runtimeReplay, revision string, record runti
 			return errors.New("begin record does not continue the rescoped objective's recorded candidate") // refusal:by-design world-action: this shape is constructed by the authority itself from Rescope's own recorded InitialCandidate*, so a mismatch is a mutated record and the exit is restoring the store
 		}
 	}
-	if replay.Status.CumulativeAttempts >= event.MaxAttempts || replay.Status.CumulativeChangedLines >= event.MaxChangedLines {
+	if replay.Status.ClassAttempts[class] >= event.MaxAttempts || replay.Status.CumulativeChangedLines >= event.MaxChangedLines {
 		return errors.New("begin record exceeds the persisted objective budget")
 	}
 	attempt := RuntimeAttempt{
 		Ordinal: event.Ordinal, ObjectiveID: event.ObjectiveID, ObjectiveGeneration: generation,
-		WorkUnit: event.WorkUnit, BeginCandidateIdentity: event.BeginCandidateIdentity,
+		WorkUnit: event.WorkUnit, Class: class, BeginCandidateIdentity: event.BeginCandidateIdentity,
 		BeginCandidateTree: event.BeginCandidateTree, BeginWorktree: event.BeginWorktree,
 		EffectiveWorktree: event.EffectiveWorktree, Outcome: AttemptRunning,
 	}
@@ -1920,6 +1982,10 @@ func applyRuntimeBeginEvent(replay *runtimeReplay, revision string, record runti
 	active := attempt
 	replay.Status.ActiveAttempt = &active
 	replay.Status.CumulativeAttempts++
+	if replay.Status.ClassAttempts == nil {
+		replay.Status.ClassAttempts = map[AttemptClass]int{}
+	}
+	replay.Status.ClassAttempts[class]++
 	replay.Status.LifetimeAttempts++
 	replay.Status.NextOrdinal = event.Ordinal + 1
 	replay.Status.NextAction = RuntimeActionFinish
@@ -2052,6 +2118,8 @@ func applyRuntimeAdvanceEvent(replay *runtimeReplay, revision string, record run
 	}
 	replay.Status.Objective = nil
 	replay.Status.CumulativeAttempts = 0
+	replay.Status.ClassAttempts = nil
+	replay.Status.ClassTerminal = nil
 	replay.Status.CumulativeChangedLines = 0
 	replay.Status.EvidenceRevision = ""
 	replay.Status.Complete = false
@@ -2063,6 +2131,10 @@ func applyRuntimeFinishEvent(replay *runtimeReplay, event *runtimeFinishEvent, u
 	if active == nil || active.Ordinal != event.Ordinal || len(replay.Status.Attempts) == 0 ||
 		replay.Status.Attempts[len(replay.Status.Attempts)-1].Outcome != AttemptRunning {
 		return errors.New("finish record does not match the active attempt")
+	}
+	if event.Class != "" && event.Class != active.Class {
+		// refusal:by-design world-action: a replayed class mismatch proves the immutable record was altered.
+		return errors.New("finish record class does not match the active attempt")
 	}
 	budgetExceeded := replay.Status.CumulativeChangedLines+event.ChangedLines > replay.Status.Objective.MaxChangedLines
 	if event.ChangedLineBudgetExceeded != budgetExceeded {
@@ -2104,7 +2176,22 @@ func applyRuntimeFinishEvent(replay *runtimeReplay, event *runtimeFinishEvent, u
 	replay.Status.CumulativeChangedLines += event.ChangedLines
 	replay.Status.LifetimeChangedLines += event.ChangedLines
 	replay.Status.EvidenceRevision = event.EvidenceRevision
-	if event.Outcome == AttemptPassed && !event.ChangedLineBudgetExceeded {
+	if replay.Status.ClassTerminal == nil {
+		replay.Status.ClassTerminal = map[AttemptClass]RuntimeClassTerminal{}
+	}
+	class := active.Class
+	terminal := RuntimeClassTerminal{Complete: event.Outcome == AttemptPassed && !event.ChangedLineBudgetExceeded}
+	terminal.DecisionRequired = !terminal.Complete && (event.ChangedLineBudgetExceeded || replay.Status.ClassAttempts[class] >= replay.Status.Objective.MaxAttempts || replay.Status.CumulativeChangedLines >= replay.Status.Objective.MaxChangedLines)
+	replay.Status.ClassTerminal[class] = terminal
+	// Interpretation, not a confirmed spec: acceptance is read as the terminal
+	// gate of the classified sequence (environment/harness precede it per the
+	// orchestrator docs), so only legacy or a passed acceptance attempt flips
+	// the objective-wide Complete/NextAction that Reset/Advance admissibility
+	// still key off. This needs sign-off from whoever specified the attempt
+	// classes: an objective that never runs an acceptance attempt (e.g. an
+	// environment-only or harness-only work unit) would otherwise never reach
+	// this shortcut either.
+	if (class == AttemptClassLegacy || class == AttemptClassAcceptance) && event.Outcome == AttemptPassed && !event.ChangedLineBudgetExceeded {
 		replay.Status.Complete = true
 		replay.Status.NextAction = RuntimeActionComplete
 	} else if event.ChangedLineBudgetExceeded || replay.Status.CumulativeAttempts >= replay.Status.Objective.MaxAttempts ||
@@ -2172,6 +2259,7 @@ func validateRuntimeBeginEvent(record runtimeRecord) error {
 		validateRuntimeText(event.EvidenceGoal, 240) != nil || event.MaxAttempts < 1 || event.MaxAttempts > maximumRuntimeAttemptLimit ||
 		event.MaxChangedLines < 1 || event.MaxChangedLines > maximumRuntimeChangedLines || event.Ordinal < 1 ||
 		!runtimeRevisionPattern.MatchString(event.BeginCandidateIdentity) || !runtimeGitTreePattern.MatchString(event.BeginCandidateTree) ||
+		(event.Class != "" && !validAttemptClass(event.Class)) ||
 		// BeginWorktree is optional (empty means legacy/pre-field), but a
 		// PRESENT value is still an identity string, not free user input: it
 		// must be a bounded, trimmed, single-line value like every other
@@ -2182,7 +2270,7 @@ func validateRuntimeBeginEvent(record runtimeRecord) error {
 	}
 	request := BeginAttemptRequest{
 		ExpectedRevision: record.PreviousRevision, RequestID: record.RequestID, WorkUnit: event.WorkUnit,
-		EvidenceGoal: event.EvidenceGoal, MaxAttempts: event.MaxAttempts, MaxChangedLines: event.MaxChangedLines,
+		EvidenceGoal: event.EvidenceGoal, MaxAttempts: event.MaxAttempts, MaxChangedLines: event.MaxChangedLines, Class: event.Class,
 	}
 	if runtimeValueHash("gentle-ai.sdd-runtime-begin-request/v1", request) != record.RequestDigest {
 		return errors.New("SDD runtime begin request digest does not match record")
@@ -2227,6 +2315,7 @@ func validateRuntimeRecordShape(record runtimeRecord) error {
 			event.ChangedLines > maximumRuntimeChangedLines || !runtimeRevisionPattern.MatchString(event.EvidenceRevision) ||
 			!runtimeRevisionPattern.MatchString(event.FinishCandidateIdentity) || !runtimeGitTreePattern.MatchString(event.FinishCandidateTree) ||
 			validateRuntimeText(event.Diagnosis, 500) != nil || !validHarnessDisposition(event.HarnessDisposition) ||
+			(event.Class != "" && !validAttemptClass(event.Class)) ||
 			validateRuntimeText(event.CleanupEvidence, 500) != nil || validateRuntimeText(event.ProcessEvidence, 500) != nil ||
 			(event.RemediatesEvidenceRevision != "" && (!runtimeRevisionPattern.MatchString(event.RemediatesEvidenceRevision) || event.Outcome != AttemptPassed)) {
 			return errors.New("invalid SDD runtime finish event")
@@ -2234,7 +2323,7 @@ func validateRuntimeRecordShape(record runtimeRecord) error {
 		request := FinishAttemptRequest{
 			ExpectedRevision: record.PreviousRevision, RequestID: record.RequestID, Outcome: event.Outcome,
 			EvidenceRevision: event.EvidenceRevision, Diagnosis: event.Diagnosis, HarnessDisposition: event.HarnessDisposition,
-			CleanupEvidence: event.CleanupEvidence, ProcessEvidence: event.ProcessEvidence,
+			CleanupEvidence: event.CleanupEvidence, ProcessEvidence: event.ProcessEvidence, Class: event.Class,
 			RemediatesEvidenceRevision: event.RemediatesEvidenceRevision,
 		}
 		if runtimeValueHash("gentle-ai.sdd-runtime-finish-request/v1", request) != record.RequestDigest {
@@ -2291,7 +2380,7 @@ func validateRuntimeRecordShape(record runtimeRecord) error {
 			EvidenceRevision: finish.EvidenceRevision, Diagnosis: finish.Diagnosis, HarnessDisposition: finish.HarnessDisposition,
 			CleanupEvidence: finish.CleanupEvidence, ProcessEvidence: finish.ProcessEvidence,
 			ExpectedBindingRevision: binding.ExpectedRevision, SuccessorLineageID: binding.Current.Lineage,
-			RemediatesEvidenceRevision: finish.RemediatesEvidenceRevision,
+			RemediatesEvidenceRevision: finish.RemediatesEvidenceRevision, Class: finish.Class,
 		}
 		if runtimeValueHash("gentle-ai.sdd-runtime-finish-request/v1", request) != record.RequestDigest {
 			return errors.New("atomic SDD runtime remediation request digest does not match record")
@@ -2453,6 +2542,10 @@ func normalizeBeginAttemptRequest(request BeginAttemptRequest) (BeginAttemptRequ
 	if err := validateRuntimeText(request.EvidenceGoal, 240); err != nil {
 		return BeginAttemptRequest{}, fmt.Errorf("invalid evidence_goal: %w", err)
 	}
+	if request.Class != "" && !validAttemptClass(request.Class) {
+		// refusal:by-design operator-knowledge: a caller must select one of the bounded runtime classes.
+		return BeginAttemptRequest{}, errors.New("attempt class must be environment, harness, or acceptance")
+	}
 	if request.MaxAttempts == 0 {
 		request.MaxAttempts = DefaultRuntimeAttemptLimit
 	}
@@ -2495,6 +2588,10 @@ func normalizeFinishAttemptRequest(request FinishAttemptRequest) (FinishAttemptR
 	}
 	if !runtimeRequestIDPattern.MatchString(request.RequestID) {
 		return FinishAttemptRequest{}, errors.New("request_id must be a canonical lowercase identifier")
+	}
+	if request.Class != "" && !validAttemptClass(request.Class) {
+		// refusal:by-design operator-knowledge: a caller must select one of the bounded runtime classes.
+		return FinishAttemptRequest{}, errors.New("attempt class must be environment, harness, or acceptance")
 	}
 	if !validTerminalAttemptOutcome(request.Outcome) {
 		return FinishAttemptRequest{}, errors.New("outcome must be failed, interrupted, or passed")
@@ -2584,6 +2681,17 @@ func finishRequestsRemediation(request FinishAttemptRequest) bool {
 
 func finishRequestsUnmanagedRemediation(request FinishAttemptRequest) bool {
 	return request.ExpectedBindingRevision == "" && request.SuccessorLineageID == "" && request.RemediatesEvidenceRevision != ""
+}
+
+func validAttemptClass(class AttemptClass) bool {
+	return class == AttemptClassEnvironment || class == AttemptClassHarness || class == AttemptClassAcceptance
+}
+
+func runtimeAttemptClass(class AttemptClass) AttemptClass {
+	if class == "" {
+		return AttemptClassLegacy
+	}
+	return class
 }
 
 func normalizeResetObjectiveRequest(request ResetObjectiveRequest) (ResetObjectiveRequest, error) {

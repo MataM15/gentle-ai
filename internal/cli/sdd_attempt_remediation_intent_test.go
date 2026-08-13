@@ -58,7 +58,7 @@ func TestRunSDDAttemptAcquireRemediationIntentFailsFastAfterReset(t *testing.T) 
 	refused, _ := runCompactSDDAttempt(t, []string{
 		"acquire", "--cwd", repo, "--change", change, "--request-id", "intent-acquire-stale",
 		"--work-unit", "remediation", "--evidence-goal", "bounded correction",
-		"--max-attempts", "1", "--max-changed-lines", "200",
+		"--max-attempts", "1", "--max-changed-lines", "200", "--attempt-class", "acceptance",
 		"--remediates-evidence-revision", cliAttemptHash('b'),
 	})
 	if refused.State != "blocked" || refused.Reason != "remediation_unsatisfiable" || refused.Token != "" {
@@ -73,7 +73,7 @@ func TestRunSDDAttemptAcquireRemediationIntentFailsFastAfterReset(t *testing.T) 
 	bound, _ := runCompactSDDAttempt(t, []string{
 		"acquire", "--cwd", repo, "--change", change, "--request-id", "intent-acquire-correction",
 		"--work-unit", "remediation", "--evidence-goal", "bounded correction",
-		"--max-attempts", "1", "--max-changed-lines", "200",
+		"--max-attempts", "1", "--max-changed-lines", "200", "--attempt-class", "acceptance",
 		"--remediates-evidence-revision", failedEvidence,
 	})
 	if bound.State != "proceed" || bound.Token == "" {

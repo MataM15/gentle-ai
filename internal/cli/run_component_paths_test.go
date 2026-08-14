@@ -113,26 +113,6 @@ func TestComponentPathsSDDOpenCodePluginsRespectXDGConfigHome(t *testing.T) {
 	}
 }
 
-func TestComponentPathsOpenCodeGentleLogoRespectsXDGConfigHome(t *testing.T) {
-	home := t.TempDir()
-	xdg := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("XDG_CONFIG_HOME", xdg)
-	adapters := resolveAdapters([]model.AgentID{model.AgentOpenCode})
-
-	paths := componentPaths(home, model.Selection{}, adapters, model.ComponentOpenCodeGentleLogo)
-	for _, name := range []string{filepath.Join("tui-plugins", "gentle-logo.tsx"), "tui.json"} {
-		path := filepath.Join(xdg, "opencode", name)
-		if !containsPath(paths, path) {
-			t.Fatalf("componentPaths(gentle-logo) missing XDG path %q\npaths=%v", path, paths)
-		}
-		fallback := filepath.Join(home, ".config", "opencode", name)
-		if containsPath(paths, fallback) {
-			t.Fatalf("componentPaths(gentle-logo) included HOME fallback path %q\npaths=%v", fallback, paths)
-		}
-	}
-}
-
 func TestComponentPathsWorkspaceScopedOpenCodeSDDUsesWorkspaceManagedPaths(t *testing.T) {
 	home := t.TempDir()
 	workspace := t.TempDir()

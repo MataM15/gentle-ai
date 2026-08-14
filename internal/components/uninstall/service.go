@@ -694,7 +694,7 @@ func (s *Service) componentOperations(adapter agents.Adapter, componentID model.
 			ops = append(ops, removeFile(path), removeDirIfEmpty(filepath.Dir(path)))
 		}
 	case model.ComponentOpenCodeGentleLogo:
-		pluginPath := filepath.Join(adapter.GlobalConfigDir(homeDir), "tui-plugins", "gentle-logo.tsx")
+		pluginPath := filepath.Join(homeDir, ".config", "opencode", "tui-plugins", "gentle-logo.tsx")
 		targets = append(targets, pluginPath)
 		ops = append(ops, removeFile(pluginPath), removeDirIfEmpty(filepath.Dir(pluginPath)))
 	case model.ComponentSkills:
@@ -799,7 +799,7 @@ func (s *Service) componentOperations(adapter agents.Adapter, componentID model.
 				ops = append(ops, removeFile(cachePath))
 			}
 
-			depDir := filepath.Join(adapter.GlobalConfigDir(homeDir), "node_modules", "unique-names-generator")
+			depDir := filepath.Join(homeDir, ".config", "opencode", "node_modules", "unique-names-generator")
 			targets = append(targets, depDir)
 			ops = append(ops, removeTree(depDir), removeDirIfEmpty(filepath.Dir(depDir)))
 		}

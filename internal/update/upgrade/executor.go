@@ -248,8 +248,8 @@ func managedAgentBackupPaths(homeDir string, adapter agents.Adapter, diagnostics
 		configDir := adapter.GlobalConfigDir(homeDir)
 		add(
 			filepath.Join(configDir, "plugins", "background-agents.ts"),
-			filepath.Join(configDir, "tui-plugins", "gentle-logo.tsx"),
-			filepath.Join(configDir, "tui.json"),
+			filepath.Join(homeDir, ".config", "opencode", "tui-plugins", "gentle-logo.tsx"),
+			filepath.Join(homeDir, ".config", "opencode", "tui.json"),
 		)
 		for _, name := range sdd.ManagedOpenCodePluginNames() {
 			add(filepath.Join(configDir, "plugins", name))

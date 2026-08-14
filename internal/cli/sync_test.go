@@ -1980,6 +1980,48 @@ func TestRunSyncAppliesManagedFilesystemChanges(t *testing.T) {
 	}
 }
 
+func TestRunSyncWritesAndVerifiesOpenCodePluginsUnderXDGConfigHome(t *testing.T) {
+	home := t.TempDir()
+	xdg := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+
+	restoreHome := osUserHomeDir
+	restoreBackupHome := backup.UserHomeDirFn
+	restoreCommand := runCommand
+	restoreLookPath := cmdLookPath
+	t.Cleanup(func() {
+		osUserHomeDir = restoreHome
+		backup.UserHomeDirFn = restoreBackupHome
+		runCommand = restoreCommand
+		cmdLookPath = restoreLookPath
+	})
+	osUserHomeDir = func() (string, error) { return home, nil }
+	backup.UserHomeDirFn = func() (string, error) { return home, nil }
+	runCommand = func(string, ...string) error { return nil }
+	cmdLookPath = func(name string) (string, error) { return "/usr/local/bin/" + name, nil }
+
+	result, err := RunSync([]string{"--agents", "opencode", "--sdd-mode", "single"})
+	if err != nil {
+		t.Fatalf("RunSync() error = %v", err)
+	}
+	if !result.Verify.Ready {
+		t.Fatalf("Verify.Ready = false, report = %#v", result.Verify)
+	}
+
+	for _, plugin := range []string{"model-variants.ts", "review-result-artifacts.ts", "skill-registry.ts"} {
+		path := filepath.Join(xdg, "opencode", "plugins", plugin)
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("expected sync to write XDG OpenCode plugin %q: %v", path, err)
+		}
+		fallback := filepath.Join(home, ".config", "opencode", "plugins", plugin)
+		if _, err := os.Stat(fallback); !os.IsNotExist(err) {
+			t.Errorf("HOME fallback OpenCode plugin %q exists or could not be checked: %v", fallback, err)
+		}
+	}
+}
+
 func TestRunSyncDoesNotInvokeEngramSetup(t *testing.T) {
 	home := t.TempDir()
 	restoreHome := osUserHomeDir

@@ -1798,7 +1798,7 @@ func TestRunInstallDryRunMatchesActualInstallOpenCodeSDDMulti(t *testing.T) {
 	}
 
 	for _, path := range expectedPaths {
-		if isLegacyOpenCodeBackgroundAgentsPlugin(path) {
+		if isLegacyOpenCodeBackgroundAgentsPlugin(home, path) {
 			if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
 				t.Fatalf("expected legacy OpenCode SDD plugin %q to be removed after install; stat err = %v", path, statErr)
 			}
@@ -1809,7 +1809,7 @@ func TestRunInstallDryRunMatchesActualInstallOpenCodeSDDMulti(t *testing.T) {
 		}
 	}
 	for _, pluginPath := range pluginPaths {
-		if isLegacyOpenCodeBackgroundAgentsPlugin(pluginPath) {
+		if isLegacyOpenCodeBackgroundAgentsPlugin(home, pluginPath) {
 			if _, statErr := os.Stat(pluginPath); !os.IsNotExist(statErr) {
 				t.Fatalf("expected legacy OpenCode SDD plugin %q to be removed after install; stat err = %v", pluginPath, statErr)
 			}

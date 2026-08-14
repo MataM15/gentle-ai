@@ -93,6 +93,26 @@ func TestComponentPathsSDDSingleIncludesOpenCodePlugins(t *testing.T) {
 	}
 }
 
+func TestComponentPathsSDDOpenCodePluginsRespectXDGConfigHome(t *testing.T) {
+	home := t.TempDir()
+	xdg := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	adapters := resolveAdapters([]model.AgentID{model.AgentOpenCode})
+
+	paths := componentPaths(home, model.Selection{SDDMode: model.SDDModeSingle}, adapters, model.ComponentSDD)
+	for _, plugin := range []string{"background-agents.ts", "model-variants.ts", "review-result-artifacts.ts", "skill-registry.ts"} {
+		path := filepath.Join(xdg, "opencode", "plugins", plugin)
+		if !containsPath(paths, path) {
+			t.Fatalf("componentPaths(sdd) missing XDG OpenCode plugin path %q\npaths=%v", path, paths)
+		}
+		fallback := filepath.Join(home, ".config", "opencode", "plugins", plugin)
+		if containsPath(paths, fallback) {
+			t.Fatalf("componentPaths(sdd) included HOME fallback plugin path %q\npaths=%v", fallback, paths)
+		}
+	}
+}
+
 func TestComponentPathsWorkspaceScopedOpenCodeSDDUsesWorkspaceManagedPaths(t *testing.T) {
 	home := t.TempDir()
 	workspace := t.TempDir()
@@ -155,7 +175,7 @@ func TestLegacyOpenCodeBackgroundAgentsPluginRequiresConfigOpenCodePluginsPath(t
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := isLegacyOpenCodeBackgroundAgentsPlugin(tt.path); got != tt.want {
+			if got := isLegacyOpenCodeBackgroundAgentsPlugin(home, tt.path); got != tt.want {
 				t.Fatalf("isLegacyOpenCodeBackgroundAgentsPlugin(%q) = %v, want %v", tt.path, got, tt.want)
 			}
 		})

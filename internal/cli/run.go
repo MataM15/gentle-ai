@@ -19,6 +19,7 @@ import (
 	"github.com/gentleman-programming/gentle-ai/v2/internal/agents/claude"
 	codexagent "github.com/gentleman-programming/gentle-ai/v2/internal/agents/codex"
 	"github.com/gentleman-programming/gentle-ai/v2/internal/agents/kimi"
+	opencodeagent "github.com/gentleman-programming/gentle-ai/v2/internal/agents/opencode"
 	"github.com/gentleman-programming/gentle-ai/v2/internal/assets"
 	"github.com/gentleman-programming/gentle-ai/v2/internal/backup"
 	"github.com/gentleman-programming/gentle-ai/v2/internal/components/agentguidance"
@@ -2015,7 +2016,7 @@ func componentPathsWithWorkspaceScoped(homeDir, workspaceDir string, scope Insta
 				if p := adapter.SettingsPath(targetDir); p != "" {
 					paths = append(paths, p, opencodedefault.OwnershipPath(p))
 				}
-				paths = append(paths, openCodeSDDPluginPaths(targetDir)...)
+				paths = append(paths, openCodeSDDPluginPaths(targetDir, adapter)...)
 				// Shared prompt files in the selected OpenCode config scope — back these up
 				// so a sync does not silently overwrite user-customized prompt content.
 				// These files are only written for multi-mode (SDDModeMulti), so we only
@@ -2280,12 +2281,13 @@ func sddSubAgentPaths(homeDir string, adapter agents.Adapter) []string {
 	return paths
 }
 
-func openCodeSDDPluginPaths(targetDir string) []string {
+func openCodeSDDPluginPaths(targetDir string, adapter agents.Adapter) []string {
 	// Legacy plugin first: installOpenCodePlugins removes it, and verification
 	// asserts its absence (isLegacyOpenCodeBackgroundAgentsPlugin).
-	paths := []string{filepath.Join(targetDir, ".config", "opencode", "plugins", "background-agents.ts")}
+	pluginsDir := filepath.Join(adapter.GlobalConfigDir(targetDir), "plugins")
+	paths := []string{filepath.Join(pluginsDir, "background-agents.ts")}
 	for _, name := range sdd.ManagedOpenCodePluginNames() {
-		paths = append(paths, filepath.Join(targetDir, ".config", "opencode", "plugins", name))
+		paths = append(paths, filepath.Join(pluginsDir, name))
 	}
 	return paths
 }
@@ -2320,7 +2322,7 @@ func runPostApplyVerification(input postApplyVerificationInput) verify.Report {
 
 	for _, currentPath := range uniqueFilePaths {
 		path := currentPath
-		if isLegacyOpenCodeBackgroundAgentsPlugin(path) {
+		if isLegacyOpenCodeBackgroundAgentsPlugin(input.HomeDir, path) {
 			checks = append(checks, verify.Check{
 				ID:          "verify:file:" + path,
 				Description: "legacy OpenCode background agents plugin removed",
@@ -2356,15 +2358,8 @@ func runPostApplyVerification(input postApplyVerificationInput) verify.Report {
 	return verify.BuildReport(verify.RunChecks(context.Background(), checks))
 }
 
-func isLegacyOpenCodeBackgroundAgentsPlugin(path string) bool {
-	path = filepath.Clean(path)
-	pluginsDir := filepath.Dir(path)
-	opencodeDir := filepath.Dir(pluginsDir)
-	configDir := filepath.Dir(opencodeDir)
-	return filepath.Base(path) == "background-agents.ts" &&
-		filepath.Base(pluginsDir) == "plugins" &&
-		filepath.Base(opencodeDir) == "opencode" &&
-		filepath.Base(configDir) == ".config"
+func isLegacyOpenCodeBackgroundAgentsPlugin(homeDir, path string) bool {
+	return filepath.Clean(path) == filepath.Join(opencodeagent.ConfigPath(homeDir), "plugins", "background-agents.ts")
 }
 
 func hasComponent(components []model.ComponentID, target model.ComponentID) bool {

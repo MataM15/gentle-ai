@@ -1863,7 +1863,7 @@ func runPostSyncVerification(homeDir, workspaceDir string, selection model.Selec
 	for _, component := range selection.Components {
 		for _, path := range syncComponentPathsWithWorkspace(homeDir, workspaceDir, selection, adapters, component) {
 			currentPath := path
-			if isLegacyOpenCodeBackgroundAgentsPlugin(currentPath) {
+			if isLegacyOpenCodeBackgroundAgentsPlugin(homeDir, currentPath) {
 				checks = append(checks, verify.Check{
 					ID:          "verify:sync:file:" + currentPath,
 					Description: "legacy OpenCode background agents plugin removed",

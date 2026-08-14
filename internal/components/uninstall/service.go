@@ -781,10 +781,11 @@ func (s *Service) componentOperations(adapter agents.Adapter, componentID model.
 
 			ops = append(ops, rewriteOpenCodeSDDSettings(path, defaultPlan, paths...))
 
-			pluginDir := filepath.Join(homeDir, ".config", "opencode", "plugins")
+			pluginDir := filepath.Join(adapter.GlobalConfigDir(homeDir), "plugins")
 			for _, pluginPath := range []string{
 				filepath.Join(pluginDir, "background-agents.ts"),
 				filepath.Join(pluginDir, "model-variants.ts"),
+				filepath.Join(pluginDir, "review-result-artifacts.ts"),
 				filepath.Join(pluginDir, "skill-registry.ts"),
 			} {
 				targets = append(targets, pluginPath)

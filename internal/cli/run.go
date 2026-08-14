@@ -2132,9 +2132,10 @@ func componentPathsWithWorkspaceScoped(homeDir, workspaceDir string, scope Insta
 				paths = append(paths, filepath.Join(homeDir, ".claude", "themes", "gentleman.json"))
 			}
 		case model.ComponentOpenCodeGentleLogo:
+			configDir := adapter.GlobalConfigDir(homeDir)
 			paths = append(paths,
-				filepath.Join(homeDir, ".config", "opencode", "tui-plugins", "gentle-logo.tsx"),
-				filepath.Join(homeDir, ".config", "opencode", "tui.json"),
+				filepath.Join(configDir, "tui-plugins", "gentle-logo.tsx"),
+				filepath.Join(configDir, "tui.json"),
 			)
 		}
 	}
